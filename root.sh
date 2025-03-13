@@ -1,7 +1,7 @@
 #!/bin/sh
 
 ROOTFS_DIR=$(pwd)
-export PATH=$PATH:~/.local/usr/bin
+export PATH=$PATH:$ROOTFS_DIR/usr/local/bin
 max_retries=50
 timeout=1
 ARCH=$(uname -m)
@@ -11,7 +11,7 @@ if [ "$ARCH" = "x86_64" ]; then
 elif [ "$ARCH" = "aarch64" ]; then
   ARCH_ALT=arm64
 else
-  printf "Unsupported CPU architecture: ${ARCH}"
+  printf "Unsupported CPU architecture: ${ARCH}\n"
   exit 1
 fi
 
@@ -21,7 +21,7 @@ if [ ! -e $ROOTFS_DIR/.installed ]; then
   echo "#                                      Foxytoux INSTALLER"
   echo "#"
   echo "#                           Copyright (C) 2024, RecodeStudios.Cloud"
-  echo "#"
+  echo "#     edited by craftingcrazegamimg"
   echo "#"
   echo "#######################################################################################"
 
@@ -40,11 +40,11 @@ case $install_ubuntu in
 esac
 
 if [ ! -e $ROOTFS_DIR/.installed ]; then
-  mkdir $ROOTFS_DIR/usr/local/bin -p
+  mkdir -p $ROOTFS_DIR/usr/local/bin
   wget --tries=$max_retries --timeout=$timeout --no-hsts -O $ROOTFS_DIR/usr/local/bin/proot "https://raw.githubusercontent.com/foxytouxxx/freeroot/main/proot-${ARCH}"
 
   while [ ! -s "$ROOTFS_DIR/usr/local/bin/proot" ]; do
-    rm $ROOTFS_DIR/usr/local/bin/proot -rf
+    rm -f $ROOTFS_DIR/usr/local/bin/proot
     wget --tries=$max_retries --timeout=$timeout --no-hsts -O $ROOTFS_DIR/usr/local/bin/proot "https://raw.githubusercontent.com/foxytouxxx/freeroot/main/proot-${ARCH}"
 
     if [ -s "$ROOTFS_DIR/usr/local/bin/proot" ]; then
@@ -59,15 +59,38 @@ if [ ! -e $ROOTFS_DIR/.installed ]; then
   chmod 755 $ROOTFS_DIR/usr/local/bin/proot
 fi
 
+# Setup Fake `sudo`, `curl`, and `systemctl`
+mkdir -p $ROOTFS_DIR/usr/bin
+
+cat > $ROOTFS_DIR/usr/bin/sudo <<- EOM
+#!/bin/sh
+echo "Fake sudo: Running command as root (Proot Mode)"
+exec "\$@"
+EOM
+
+cat > $ROOTFS_DIR/usr/bin/curl <<- EOM
+#!/bin/sh
+wget "\$@"
+EOM
+
+cat > $ROOTFS_DIR/usr/bin/systemctl <<- EOM
+#!/bin/sh
+echo "systemctl is not available in Proot"
+exit 1
+EOM
+
+chmod +x $ROOTFS_DIR/usr/bin/sudo
+chmod +x $ROOTFS_DIR/usr/bin/curl
+chmod +x $ROOTFS_DIR/usr/bin/systemctl
+
 if [ ! -e $ROOTFS_DIR/.installed ]; then
   printf "nameserver 1.1.1.1\nnameserver 1.0.0.1" > ${ROOTFS_DIR}/etc/resolv.conf
-  rm -rf /tmp/rootfs.tar.xz /tmp/sbin
+  rm -rf /tmp/rootfs.tar.gz
   touch $ROOTFS_DIR/.installed
 fi
 
 CYAN='\e[0;36m'
 WHITE='\e[0;37m'
-
 RESET_COLOR='\e[0m'
 
 display_gg() {
@@ -79,6 +102,10 @@ display_gg() {
 clear
 display_gg
 
+# Start the Proot Root Shell with Fake Root
 $ROOTFS_DIR/usr/local/bin/proot \
   --rootfs="${ROOTFS_DIR}" \
-  -0 -w "/root" -b /dev -b /sys -b /proc -b /etc/resolv.conf --kill-on-exit
+  -0 -w "/root" \
+  -b /dev -b /sys -b /proc -b /etc/resolv.conf \
+  --kill-on-exit \
+  /bin/sh --login
